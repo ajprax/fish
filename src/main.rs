@@ -3,6 +3,7 @@ mod constants;
 mod systems;
 mod utils;
 
+use crate::constants::{PERF, USE_CIRLCE};
 use bevy::prelude::*;
 use iyes_perf_ui::PerfUiPlugin;
 
@@ -26,9 +27,11 @@ fn main() {
     // TODO: give the shark hunger.
     //       make it steer towards fish in proportion to that hunger and their size
     //       remove (eat) fish that get too close
-    App::new()
-        .add_plugins(DefaultPlugins)
-        // .add_plugins(Perf)
+    let mut app = App::new();
+    if PERF {
+        app.add_plugins(Perf);
+    }
+    app.add_plugins(DefaultPlugins)
         .add_systems(Startup, (fish_startup, sharks_startup))
         .add_systems(
             Update,
@@ -38,8 +41,11 @@ fn main() {
                 sac,
                 fish_wander,
                 sharks_wander,
-                avoid_circle_walls,
-                // avoid_square_walls,
+                if USE_CIRLCE {
+                    avoid_circle_walls
+                } else {
+                    avoid_square_walls
+                },
                 movement,
                 translate,
                 rotate,

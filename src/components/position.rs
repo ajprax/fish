@@ -23,7 +23,7 @@ impl Position {
     }
 
     pub fn random_in_circle() -> Position {
-        let r = RADIUS * random::<f32>().sqrt();
+        let r = RADIUS * 0.8 * random::<f32>().sqrt();
         let theta = random::<f32>() * TAU;
         let x = r * theta.cos();
         let y = r * theta.sin();
