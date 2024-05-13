@@ -12,12 +12,12 @@ const ALIGNMENT: f32 = PI / 180.0;
 const COHESION: f32 = PI / 180.0;
 const TIME_RATE: f32 = 120.0; // TODO: the time rate affects the relative scale of speed vs angles. it may be correct to multiply or divide some of those values as well
 const NFISH: usize = 400;
-const NSHARKS: usize = 0;
+const NSHARKS: usize = 1;
 const FISH_SPEED: f32 = 1.25;
 const SHARK_SPEED: f32 = 0.75;
 const FLIGHT_MAX: f32 = 200.0; // TODO: consider making this a duration instead
 const FLIGHT_SPEED: f32 = 4.0;
-const VISIBILE_DISTANCE: f32 = 75.0; // TODO: make this a component so it can be different for different animals (especially relevant re turn rate and speed)
+const VISIBLE_DISTANCE: f32 = 75.0; // TODO: make this a component so it can be different for different animals (especially relevant re turn rate and speed)
 const VISIBLE_ANGLE: f32 = PI * 3.0 / 4.0;
 const FISH_NOISE: f32 = PI / 45.0;
 const SHARK_NOISE: f32 = PI / 90.0;
@@ -41,6 +41,23 @@ struct Size(f32);
 impl Default for Size {
     fn default() -> Self {
         Size(1.0)
+    }
+}
+
+#[derive(Component, Clone, Copy, Debug)]
+struct Vision(f32);
+
+impl Default for Vision {
+    fn default() -> Self {
+        Vision(VISIBLE_DISTANCE)
+    }
+}
+
+impl Mul<Size> for Vision {
+    type Output = Vision;
+
+    fn mul(self, rhs: Size) -> Self::Output {
+        Vision(self.0 * rhs.0)
     }
 }
 
@@ -302,14 +319,15 @@ fn startup(
 ) {
     commands.spawn(Camera2dBundle::default());
     for _ in 0..NFISH {
+        let size = Size(random_in_range(FISH_SIZE_RANGE.0, FISH_SIZE_RANGE.1));
         let position = if USE_CIRLCE {
             Position::random_in_circle()
         } else {
             Position::random_in_square()
         };
         let rotation = Rotation::new(random_in_range(-PI, PI));
-        let size = Size(random_in_range(FISH_SIZE_RANGE.0, FISH_SIZE_RANGE.1));
         let speed = Speed(FISH_SPEED * size.0);
+        let vision = Vision::default() * size;
         let fleeing = Fleeing::default();
         let mesh = MaterialMesh2dBundle {
             mesh: Mesh2dHandle(meshes.add(Triangle2d::new(
@@ -326,14 +344,15 @@ fn startup(
             transform: Transform::from_xyz(position.x, position.y, 0.5),
             ..default()
         };
-        commands.spawn((Fish, size, position, rotation, speed, fleeing, mesh));
+        commands.spawn((Fish, size, position, rotation, speed, vision, fleeing, mesh));
     }
 
     for _ in 0..NSHARKS {
+        let size = Size(random_in_range(SHARK_SIZE_RANGE.0, SHARK_SIZE_RANGE.1));
         let position = Position::default();
         let rotation = Rotation::default();
-        let size = Size(random_in_range(SHARK_SIZE_RANGE.0, SHARK_SIZE_RANGE.1));
         let speed = Speed(SHARK_SPEED * size.0);
+        let vision = Vision::default() * size;
         let mesh = MaterialMesh2dBundle {
             mesh: Mesh2dHandle(meshes.add(Triangle2d::new(
                 Vec2::new(10.0, 0.0) * size.0,
@@ -344,26 +363,27 @@ fn startup(
             transform: Transform::from_xyz(position.x, position.y, 0.5),
             ..default()
         };
-        commands.spawn((Shark, size, position, rotation, speed, mesh));
+        commands.spawn((Shark, size, position, rotation, speed, vision, mesh));
     }
 }
 
 fn start_fleeing(
     mut fish: Query<
-        (&Position, &mut Rotation, &mut Speed, &mut Fleeing),
+        (&Position, &mut Rotation, &mut Speed, &Vision, &mut Fleeing),
         (With<Fish>, Without<Shark>),
     >,
     sharks: Query<(&Size, &Position), (With<Shark>, Without<Fish>)>,
 ) {
-    for (p, mut r, mut s, mut f) in &mut fish {
+    for (p, mut r, mut s, v, mut f) in &mut fish {
         if f.0 {
             continue;
         }
 
         for (ss, sp) in &sharks {
-            if can_see_position(*p, *r, *ss, *sp) {
+            if can_see_position(*p, *r, *v, *ss, *sp) {
                 f.0 = true;
                 s.0 *= FLIGHT_SPEED;
+                // TODO: be subtler, just turn away
                 *r = p.point_away(*sp);
             }
         }
@@ -385,10 +405,10 @@ fn stop_fleeing(
     }
 }
 
-fn can_see_position(p1: Position, r1: Rotation, s2: Size, p2: Position) -> bool {
+fn can_see_position(p1: Position, r1: Rotation, v1: Vision, s2: Size, p2: Position) -> bool {
     let angle = normalize_radians(p1.point_towards(p2).0 - r1.0);
     let distance = p1.distance(p2);
-    (distance * s2.0 < VISIBILE_DISTANCE) && (angle < VISIBLE_ANGLE) && (angle > -VISIBLE_ANGLE)
+    (distance * s2.0 < v1.0) && (angle < VISIBLE_ANGLE) && (angle > -VISIBLE_ANGLE)
 }
 
 // returns (left, right, top, bottom
@@ -420,21 +440,23 @@ fn proximity_to_walls(p: Position, r: Rotation) -> (f32, f32, f32, f32) {
 // order to share some prep work (e.g. which fish can see which others
 // TODO: see if we can make visibility a resource with a system to update it
 //       ultimately this resource could manage a kdtree for more efficient lookups also
-fn sac(mut fish: Query<(Entity, &Size, &Position, &mut Rotation, &Fleeing), With<Fish>>) {
+fn sac(mut fish: Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), With<Fish>>) {
     let mut visibility: HashMap<Entity, Vec<Entity>> = HashMap::new();
     let mut combinations = fish.iter_combinations_mut();
-    while let Some([(e1, s1, p1, r1, f1), (e2, s2, p2, r2, f2)]) = combinations.fetch_next() {
+    while let Some([(e1, _, p1, r1, v1, f1), (e2, s2, p2, r2, v2, f2)]) = combinations.fetch_next()
+    {
         let mut check_visibility =
-            |(e1, p1, r1): (Entity, Position, Rotation), (e2, s2, p2): (Entity, Size, Position)| {
-                if can_see_position(p1, r1, s2, p2) {
+            |(e1, p1, r1, v1): (Entity, Position, Rotation, Vision),
+             (e2, s2, p2): (Entity, Size, Position)| {
+                if can_see_position(p1, r1, v1, s2, p2) {
                     visibility.entry(e1).or_default().push(e2);
                 }
             };
         if !f1.0 {
-            check_visibility((e1, *p1, *r1), (e2, *s2, *p2));
+            check_visibility((e1, *p1, *r1, *v1), (e2, *s2, *p2));
         }
         if !f2.0 {
-            check_visibility((e2, *p2, *r2), (e1, *s2, *p1));
+            check_visibility((e2, *p2, *r2, *v2), (e1, *s2, *p1));
         }
     }
 
@@ -445,42 +467,42 @@ fn sac(mut fish: Query<(Entity, &Size, &Position, &mut Rotation, &Fleeing), With
 
 /// point awaay from visible friends
 fn separation(
-    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Fleeing), With<Fish>>,
+    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), With<Fish>>,
     visibility: &HashMap<Entity, Vec<Entity>>,
 ) {
     for (e, visible) in visibility {
         let r = {
-            let (_, _, p1, r1, f1) = fish.get(*e).unwrap();
+            let (_, _, p1, r1, _, f1) = fish.get(*e).unwrap();
             if f1.0 {
                 continue;
             }
             let mut r = Rotation::default();
             for e2 in visible {
-                let (_, _, p2, _, _) = fish.get(*e2).unwrap();
+                let (_, _, p2, _, _, _) = fish.get(*e2).unwrap();
                 let inc = p1.steer_away(*p2, *r1, SEPARATION);
                 r += inc;
             }
             r
         };
-        let (_, _, _, mut r1, _) = fish.get_mut(*e).unwrap();
+        let (_, _, _, mut r1, _, _) = fish.get_mut(*e).unwrap();
         *r1 += r;
     }
 }
 
 /// point in the same direction as visible friends
 fn alignment(
-    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Fleeing), With<Fish>>,
+    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), With<Fish>>,
     visibility: &HashMap<Entity, Vec<Entity>>,
 ) {
     for (e, visible) in visibility {
         let r = {
-            let (_, _, _, r1, f1) = fish.get(*e).unwrap();
+            let (_, _, _, r1, _, f1) = fish.get(*e).unwrap();
             let mut r = Rotation::default();
             if f1.0 {
                 continue;
             }
             for e2 in visible {
-                let (_, _, _, r2, _) = fish.get(*e2).unwrap();
+                let (_, _, _, r2, _, _) = fish.get(*e2).unwrap();
                 r += Rotation::new({
                     let rel = *r2 - *r1;
                     if rel.0.abs() > ALIGNMENT {
@@ -492,19 +514,19 @@ fn alignment(
             }
             r
         };
-        let (_, _, _, mut r1, _) = fish.get_mut(*e).unwrap();
+        let (_, _, _, mut r1, _, _) = fish.get_mut(*e).unwrap();
         *r1 += r;
     }
 }
 
 /// point towards the center of visible friends
 fn cohesion(
-    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Fleeing), With<Fish>>,
+    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), With<Fish>>,
     visibility: &HashMap<Entity, Vec<Entity>>,
 ) {
     for (e, visible) in visibility {
         let r = {
-            let (_, _, p1, r1, f1) = fish.get(*e).unwrap();
+            let (_, _, p1, r1, _, f1) = fish.get(*e).unwrap();
             if f1.0 {
                 continue;
             }
@@ -512,7 +534,7 @@ fn cohesion(
             let mut count = 0.0;
 
             for e2 in visible {
-                let (_, _, p2, _, _) = fish.get(*e2).unwrap();
+                let (_, _, p2, _, _, _) = fish.get(*e2).unwrap();
                 center += p2.0;
                 count += 1.0;
             }
@@ -520,7 +542,7 @@ fn cohesion(
             center /= count;
             p1.steer_towards(Position(center), *r1, COHESION)
         };
-        let (_, _, _, mut r1, _) = fish.get_mut(*e).unwrap();
+        let (_, _, _, mut r1, _, _) = fish.get_mut(*e).unwrap();
         *r1 += r;
     }
 }
@@ -563,59 +585,59 @@ fn distance_to_circle_wall(p: Position, r: Rotation) -> f32 {
     p.distance(Position(P1))
 }
 
-fn avoid_circle_walls(mut swimmers: Query<(&Position, &mut Rotation)>) {
+fn avoid_circle_walls(mut swimmers: Query<(&Position, &mut Rotation, &Vision)>) {
     // TODO: calculate the distance to the wall in the direction of travel
     //       if it hits the wall, calculate the distances to the wall of a small turn left or right
     //       add the turn with the greater distance, scaled inversely by that distance
 
-    for (p, mut r) in &mut swimmers {
-        if distance_to_circle_wall(*p, *r) < VISIBILE_DISTANCE {
+    for (p, mut r, v) in &mut swimmers {
+        if distance_to_circle_wall(*p, *r) < v.0 {
             // println!("{p:?} {r:?} avoiding");
             let left = distance_to_circle_wall(*p, *r + Rotation::new(WALL_AVOIDANCE));
             let right = distance_to_circle_wall(*p, *r + Rotation::new(-WALL_AVOIDANCE));
             if left > right {
                 // println!("turning left");
-                *r = Rotation::new(r.0 + WALL_AVOIDANCE * (VISIBILE_DISTANCE / left).max(2.0));
+                *r = Rotation::new(r.0 + WALL_AVOIDANCE * (v.0 / left).max(2.0));
             } else {
                 // println!("turning right");
-                *r = Rotation::new(r.0 - WALL_AVOIDANCE * (VISIBILE_DISTANCE / right).max(2.0));
+                *r = Rotation::new(r.0 - WALL_AVOIDANCE * (v.0 / right).max(2.0));
             }
         }
     }
 }
 
-fn avoid_square_walls(mut swimmers: Query<(&Position, &mut Rotation)>) {
-    for (p, mut r) in &mut swimmers {
+fn avoid_square_walls(mut swimmers: Query<(&Position, &mut Rotation, &Vision)>) {
+    for (p, mut r, v) in &mut swimmers {
         let (left, right, top, bottom) = proximity_to_walls(*p, *r);
         // println!("{p:?} {r:?} {left} {right} {top} {bottom}");
         let mut left_turn = 0.0;
         let mut right_turn = 0.0;
-        if left != 0.0 && left < VISIBILE_DISTANCE {
-            let power = WALL_AVOIDANCE * (VISIBILE_DISTANCE / left).max(2.0);
+        if left != 0.0 && left < v.0 {
+            let power = WALL_AVOIDANCE * (v.0 / left).max(2.0);
             if r.0 > 0.0 {
                 right_turn += power;
             } else {
                 left_turn += power;
             }
         }
-        if right != 0.0 && right < VISIBILE_DISTANCE {
-            let power = WALL_AVOIDANCE * (VISIBILE_DISTANCE / right).max(2.0);
+        if right != 0.0 && right < v.0 {
+            let power = WALL_AVOIDANCE * (v.0 / right).max(2.0);
             if r.0 > 0.0 {
                 left_turn += power;
             } else {
                 right_turn += power;
             }
         }
-        if top != 0.0 && top < VISIBILE_DISTANCE {
-            let power = WALL_AVOIDANCE * (VISIBILE_DISTANCE / top).max(2.0);
+        if top != 0.0 && top < v.0 {
+            let power = WALL_AVOIDANCE * (v.0 / top).max(2.0);
             if r.0 > PI / 2.0 {
                 left_turn += power;
             } else {
                 right_turn += power;
             }
         }
-        if bottom != 0.0 && bottom < VISIBILE_DISTANCE {
-            let power = WALL_AVOIDANCE * (VISIBILE_DISTANCE / bottom).max(2.0);
+        if bottom != 0.0 && bottom < v.0 {
+            let power = WALL_AVOIDANCE * (v.0 / bottom).max(2.0);
             if r.0 < -PI / 2.0 {
                 right_turn += power;
             } else {
