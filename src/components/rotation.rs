@@ -12,18 +12,6 @@ impl Rotation {
         Rotation(normalize_radians(radians))
     }
 
-    // fn mirror_over_x(self) -> Rotation {
-    //     Rotation::new(-self.0)
-    // }
-    //
-    // fn mirror_over_y(self) -> Rotation {
-    //     if self.0.is_sign_positive() {
-    //         Rotation::new(self.0 + (PI / 2.0 - self.0) * 2.0)
-    //     } else {
-    //         Rotation::new(self.0 - (-PI / 2.0 - self.0) * 2.0)
-    //     }
-    // }
-
     pub fn unit_vector(self) -> Vec2 {
         self.to_velocity(Speed(1.0)).0
     }

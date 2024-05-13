@@ -29,7 +29,7 @@ impl Direction {
 /// normalizes an angle in radians into the range [-PI, PI)
 pub fn normalize_radians(r: f32) -> f32 {
     let r = (r % TAU + TAU) % TAU;
-    if r > PI {
+    if r >= PI {
         r - TAU
     } else {
         r
@@ -86,9 +86,9 @@ pub fn can_see_position(p1: Position, r1: Rotation, v1: Vision, s2: Size, p2: Po
     (distance * s2.0 < v1.distance) && (angle < v1.angle) && (angle > -v1.angle)
 }
 
-// returns (left, right, top, bottom
+// returns (left, right, top, bottom)
 // returns 0 if facing away from that wall
-pub fn proximity_to_walls(p: Position, r: Rotation) -> (f32, f32, f32, f32) {
+pub fn distance_to_walls(p: Position, r: Rotation) -> (f32, f32, f32, f32) {
     let [minx, maxx, miny, maxy] = BOUNDS;
     let left = p.x - minx;
     let right = maxx - p.x;

@@ -4,10 +4,9 @@ use bevy::math::Quat;
 use bevy::prelude::{Query, Res, Time, Transform};
 
 pub fn movement(time: Res<Time>, mut moveable: Query<(&mut Position, &Rotation, &Speed)>) {
-    // TODO avoid edges instead of wrapping, maybe make the tank a circle?
     for (mut p, r, s) in &mut moveable {
         *p += r.to_velocity(*s) * time.delta().as_secs_f32() * TIME_RATE;
-        // println!("{p:?}");
+        // in case a fish does get outside the tank, wrap it back around
         let [minx, maxx, miny, maxy] = BOUNDS;
         if p.x > maxx {
             p.x -= WIDTH;

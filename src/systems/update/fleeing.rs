@@ -1,15 +1,12 @@
 use bevy::prelude::*;
 
 use crate::can_see_position;
-use crate::components::{Fish, Fleeing, Position, Rotation, Shark, Size, Speed, Vision};
+use crate::components::{Fleeing, IsFish, IsShark, Position, Rotation, Size, Speed, Vision};
 use crate::constants::{FLIGHT_MAX, FLIGHT_SPEED};
 
 pub fn start_fleeing(
-    mut fish: Query<
-        (&Position, &mut Rotation, &mut Speed, &Vision, &mut Fleeing),
-        (With<Fish>, Without<Shark>),
-    >,
-    sharks: Query<(&Size, &Position), (With<Shark>, Without<Fish>)>,
+    mut fish: Query<(&Position, &mut Rotation, &mut Speed, &Vision, &mut Fleeing), IsFish>,
+    sharks: Query<(&Size, &Position), IsShark>,
 ) {
     for (p, mut r, mut s, v, mut f) in &mut fish {
         if f.0 {
@@ -28,8 +25,8 @@ pub fn start_fleeing(
 }
 
 pub fn stop_fleeing(
-    mut fish: Query<(&Position, &mut Speed, &mut Fleeing), (With<Fish>, Without<Shark>)>,
-    sharks: Query<&Position, (With<Shark>, Without<Fish>)>,
+    mut fish: Query<(&Position, &mut Speed, &mut Fleeing), IsFish>,
+    sharks: Query<&Position, IsShark>,
 ) {
     for (p, mut s, mut f) in &mut fish {
         if !f.0 {

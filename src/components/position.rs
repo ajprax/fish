@@ -68,8 +68,7 @@ impl Position {
     pub fn steer_away(self, other: Position, rotation: Rotation, max: f32) -> Rotation {
         let rel = self.point_away(other) - rotation;
         if rel.0.abs() > max {
-            let maxed = Rotation::new(max * rel.0.signum());
-            maxed
+            Rotation::new(max * rel.0.signum())
         } else {
             rel
         }

@@ -1,17 +1,15 @@
-use crate::components::{Fish, Fleeing, Position, Rotation, Size, Vision};
+use crate::components::{Fleeing, IsFish, Position, Rotation, Size, Vision};
 use crate::constants::{ALIGNMENT, COHESION, SEPARATION};
 use crate::utils::can_see_position;
 use bevy::math::Vec2;
-use bevy::prelude::{Entity, Query, With};
+use bevy::prelude::{Entity, Query};
 use std::collections::HashMap;
 
 // separation, alignment, and cohesion are system-like but are all called from the same system in
 // order to share some prep work (e.g. which fish can see which others
 // TODO: see if we can make visibility a resource with a system to update it
 //       ultimately this resource could manage a kdtree for more efficient lookups also
-pub fn sac(
-    mut fish: Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), With<Fish>>,
-) {
+pub fn sac(mut fish: Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), IsFish>) {
     let mut visibility: HashMap<Entity, Vec<Entity>> = HashMap::new();
     let mut combinations = fish.iter_combinations_mut();
     while let Some([(e1, _, p1, r1, v1, f1), (e2, s2, p2, r2, v2, f2)]) = combinations.fetch_next()
@@ -36,9 +34,9 @@ pub fn sac(
     cohesion(&mut fish, &visibility);
 }
 
-/// point awaay from visible friends
+/// point away from visible friends
 fn separation(
-    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), With<Fish>>,
+    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), IsFish>,
     visibility: &HashMap<Entity, Vec<Entity>>,
 ) {
     for (e, visible) in visibility {
@@ -62,7 +60,7 @@ fn separation(
 
 /// point in the same direction as visible friends
 fn alignment(
-    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), With<Fish>>,
+    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), IsFish>,
     visibility: &HashMap<Entity, Vec<Entity>>,
 ) {
     for (e, visible) in visibility {
@@ -92,7 +90,7 @@ fn alignment(
 
 /// point towards the center of visible friends
 fn cohesion(
-    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), With<Fish>>,
+    fish: &mut Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), IsFish>,
     visibility: &HashMap<Entity, Vec<Entity>>,
 ) {
     for (e, visible) in visibility {

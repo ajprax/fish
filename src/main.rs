@@ -5,7 +5,6 @@ mod utils;
 
 use bevy::prelude::*;
 use iyes_perf_ui::PerfUiPlugin;
-use std::ops::{Add, AddAssign, Deref, DerefMut, Mul, Sub, SubAssign};
 
 use crate::systems::*;
 use crate::utils::*;
@@ -24,6 +23,9 @@ impl Plugin for Perf {
 }
 
 fn main() {
+    // TODO: give the shark hunger.
+    //       make it steer towards fish in proportion to that hunger and their size
+    //       remove (eat) fish that get too close
     App::new()
         .add_plugins(DefaultPlugins)
         // .add_plugins(Perf)

@@ -1,9 +1,9 @@
-use crate::components::{Fish, Fleeing, Rotation, Shark};
+use crate::components::{Fleeing, IsFish, IsShark, Rotation};
 use crate::constants::{FISH_NOISE, SHARK_NOISE};
 use crate::utils::Direction;
-use bevy::prelude::{Query, With, Without};
+use bevy::prelude::Query;
 
-pub fn fish_wander(mut fish: Query<(&mut Rotation, &Fleeing), (With<Fish>, Without<Shark>)>) {
+pub fn fish_wander(mut fish: Query<(&mut Rotation, &Fleeing), IsFish>) {
     for (mut r, f) in &mut fish {
         if !f.0 {
             match Direction::next() {
@@ -15,10 +15,7 @@ pub fn fish_wander(mut fish: Query<(&mut Rotation, &Fleeing), (With<Fish>, Witho
     }
 }
 
-// TODO: give the shark hunger.
-//       make it steer towards fish in proportion to that hunger
-//       remove (eat) fish that get too close
-pub fn sharks_wander(mut sharks: Query<&mut Rotation, With<Shark>>) {
+pub fn sharks_wander(mut sharks: Query<&mut Rotation, IsShark>) {
     for mut r in &mut sharks {
         match Direction::next() {
             Direction::Left => r.0 += SHARK_NOISE,
