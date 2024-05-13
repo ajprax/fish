@@ -17,7 +17,6 @@ pub fn start_fleeing(
             if can_see_position(*p, *r, *v, *ss, *sp) {
                 f.0 = true;
                 s.0 *= FLIGHT_SPEED;
-                // TODO: be subtler, just turn away
                 *r = p.point_away(*sp);
             }
         }

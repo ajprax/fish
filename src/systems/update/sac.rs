@@ -7,8 +7,6 @@ use std::collections::HashMap;
 
 // separation, alignment, and cohesion are system-like but are all called from the same system in
 // order to share some prep work (e.g. which fish can see which others
-// TODO: see if we can make visibility a resource with a system to update it
-//       ultimately this resource could manage a kdtree for more efficient lookups also
 pub fn sac(mut fish: Query<(Entity, &Size, &Position, &mut Rotation, &Vision, &Fleeing), IsFish>) {
     let mut visibility: HashMap<Entity, Vec<Entity>> = HashMap::new();
     let mut combinations = fish.iter_combinations_mut();

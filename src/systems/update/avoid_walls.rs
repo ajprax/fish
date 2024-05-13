@@ -4,8 +4,6 @@ use crate::utils::{distance_to_circle_wall, distance_to_walls};
 use bevy::prelude::Query;
 use std::f32::consts::PI;
 
-// TODO: make both of these systems stronger. with high density of fish, they can force their way
-//       past the walls
 pub fn avoid_circle_walls(mut swimmers: Query<(&Position, &mut Rotation, &Vision)>) {
     for (p, mut r, v) in &mut swimmers {
         if distance_to_circle_wall(*p, *r) < v.distance {
