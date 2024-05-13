@@ -17,7 +17,7 @@ const FISH_SPEED: f32 = 1.25;
 const SHARK_SPEED: f32 = 0.75;
 const FLIGHT_MAX: f32 = 200.0; // TODO: consider making this a duration instead
 const FLIGHT_SPEED: f32 = 4.0;
-const VISIBLE_DISTANCE: f32 = 75.0; // TODO: make this a component so it can be different for different animals (especially relevant re turn rate and speed)
+const VISIBLE_DISTANCE: f32 = 75.0;
 const VISIBLE_ANGLE: f32 = PI * 3.0 / 4.0;
 const FISH_NOISE: f32 = PI / 45.0;
 const SHARK_NOISE: f32 = PI / 90.0;
@@ -45,11 +45,23 @@ impl Default for Size {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-struct Vision(f32);
+struct Vision {
+    distance: f32,
+    angle: f32,
+}
+
+impl Vision {
+    fn new(distance: f32, angle: f32) -> Vision {
+        Vision { distance, angle }
+    }
+}
 
 impl Default for Vision {
     fn default() -> Self {
-        Vision(VISIBLE_DISTANCE)
+        Vision {
+            distance: VISIBLE_DISTANCE,
+            angle: VISIBLE_ANGLE,
+        }
     }
 }
 
@@ -57,7 +69,7 @@ impl Mul<Size> for Vision {
     type Output = Vision;
 
     fn mul(self, rhs: Size) -> Self::Output {
-        Vision(self.0 * rhs.0)
+        Vision::new(self.distance * rhs.0, self.angle)
     }
 }
 
@@ -352,7 +364,8 @@ fn startup(
         let position = Position::default();
         let rotation = Rotation::default();
         let speed = Speed(SHARK_SPEED * size.0);
-        let vision = Vision::default() * size;
+        let mut vision = Vision::default() * size;
+        vision.angle = PI / 3.0;
         let mesh = MaterialMesh2dBundle {
             mesh: Mesh2dHandle(meshes.add(Triangle2d::new(
                 Vec2::new(10.0, 0.0) * size.0,
@@ -408,7 +421,7 @@ fn stop_fleeing(
 fn can_see_position(p1: Position, r1: Rotation, v1: Vision, s2: Size, p2: Position) -> bool {
     let angle = normalize_radians(p1.point_towards(p2).0 - r1.0);
     let distance = p1.distance(p2);
-    (distance * s2.0 < v1.0) && (angle < VISIBLE_ANGLE) && (angle > -VISIBLE_ANGLE)
+    (distance * s2.0 < v1.distance) && (angle < v1.angle) && (angle > -v1.angle)
 }
 
 // returns (left, right, top, bottom
@@ -572,6 +585,7 @@ fn sharks(mut sharks: Query<&mut Rotation, With<Shark>>) {
     }
 }
 
+// https://www.bluebill.net/circle_ray_intersection.html
 fn distance_to_circle_wall(p: Position, r: Rotation) -> f32 {
     let C = Vec2::ZERO;
     let P = p.0;
@@ -591,16 +605,16 @@ fn avoid_circle_walls(mut swimmers: Query<(&Position, &mut Rotation, &Vision)>) 
     //       add the turn with the greater distance, scaled inversely by that distance
 
     for (p, mut r, v) in &mut swimmers {
-        if distance_to_circle_wall(*p, *r) < v.0 {
+        if distance_to_circle_wall(*p, *r) < v.distance {
             // println!("{p:?} {r:?} avoiding");
             let left = distance_to_circle_wall(*p, *r + Rotation::new(WALL_AVOIDANCE));
             let right = distance_to_circle_wall(*p, *r + Rotation::new(-WALL_AVOIDANCE));
             if left > right {
                 // println!("turning left");
-                *r = Rotation::new(r.0 + WALL_AVOIDANCE * (v.0 / left).max(2.0));
+                *r = Rotation::new(r.0 + WALL_AVOIDANCE * (v.distance / left).max(2.0));
             } else {
                 // println!("turning right");
-                *r = Rotation::new(r.0 - WALL_AVOIDANCE * (v.0 / right).max(2.0));
+                *r = Rotation::new(r.0 - WALL_AVOIDANCE * (v.distance / right).max(2.0));
             }
         }
     }
@@ -612,32 +626,32 @@ fn avoid_square_walls(mut swimmers: Query<(&Position, &mut Rotation, &Vision)>) 
         // println!("{p:?} {r:?} {left} {right} {top} {bottom}");
         let mut left_turn = 0.0;
         let mut right_turn = 0.0;
-        if left != 0.0 && left < v.0 {
-            let power = WALL_AVOIDANCE * (v.0 / left).max(2.0);
+        if left != 0.0 && left < v.distance {
+            let power = WALL_AVOIDANCE * (v.distance / left).max(2.0);
             if r.0 > 0.0 {
                 right_turn += power;
             } else {
                 left_turn += power;
             }
         }
-        if right != 0.0 && right < v.0 {
-            let power = WALL_AVOIDANCE * (v.0 / right).max(2.0);
+        if right != 0.0 && right < v.distance {
+            let power = WALL_AVOIDANCE * (v.distance / right).max(2.0);
             if r.0 > 0.0 {
                 left_turn += power;
             } else {
                 right_turn += power;
             }
         }
-        if top != 0.0 && top < v.0 {
-            let power = WALL_AVOIDANCE * (v.0 / top).max(2.0);
+        if top != 0.0 && top < v.distance {
+            let power = WALL_AVOIDANCE * (v.distance / top).max(2.0);
             if r.0 > PI / 2.0 {
                 left_turn += power;
             } else {
                 right_turn += power;
             }
         }
-        if bottom != 0.0 && bottom < v.0 {
-            let power = WALL_AVOIDANCE * (v.0 / bottom).max(2.0);
+        if bottom != 0.0 && bottom < v.distance {
+            let power = WALL_AVOIDANCE * (v.distance / bottom).max(2.0);
             if r.0 < -PI / 2.0 {
                 right_turn += power;
             } else {
